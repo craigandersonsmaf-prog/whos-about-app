@@ -1,3 +1,20 @@
+
+// Prototype cache reset: prevents old GitHub Pages/PWA versions sticking around.
+(async function clearOldPrototypeCache(){
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) await reg.unregister();
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {
+    console.warn("Cache reset skipped", e);
+  }
+})();
+
 const ADMIN_CODE = "28041972*";
 const DEFAULT_JOIN_CODE = "SKIPTON-PILOT";
 
@@ -364,5 +381,4 @@ function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
 
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
 render();

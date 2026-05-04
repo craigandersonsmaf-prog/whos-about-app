@@ -26,3 +26,10 @@ What this version improves:
 Note:
 This is still a local prototype. Data is saved on the device/browser only.
 Real multi-user sync and push notifications need Firebase or another backend.
+
+
+## No-cache rebuild
+Admin code: 28041972*
+This build disables/unregisters the old service worker and clears old browser caches.
+Upload all files at the GitHub repo root and hard refresh once.
+You should see: v1.1 no-cache near the group name.
