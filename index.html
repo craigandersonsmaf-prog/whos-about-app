@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Who’s About - Simple Pilot</title>
+  <title>Who’s About - Full Admin V2</title>
+  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="styles.css" />
   <meta name="theme-color" content="#0b1220" />
 </head>
@@ -11,7 +12,7 @@
   <div class="app-shell">
     <header class="topbar">
       <div>
-        <div class="eyebrow"><span id="groupLabel">Skipton Pilot</span> · v1.1 no-cache</div>
+        <div class="eyebrow" id="groupLabel">Skipton Pilot</div>
         <h1>Who’s About?</h1>
       </div>
       <button id="adminLockBtn" class="pill">🔒 Admin</button>
@@ -31,8 +32,8 @@
   <div id="adminModal" class="modal hidden">
     <div class="modal-card">
       <h2>Admin unlock</h2>
-      <p class="muted">Unlock group controls.</p>
-      <input id="adminCodeInput" type="password" placeholder="Admin code" />
+      <p class="muted">Master admin can control all groups. Group admins control their own group only.</p>
+      <input id="adminCodeInput" type="password" placeholder="Admin or group password" />
       <button id="unlockAdmin" class="primary">Unlock</button>
       <button id="closeAdminModal" class="secondary">Cancel</button>
       <div id="adminLockMsg" class="notice hidden"></div>
@@ -41,12 +42,14 @@
 
   <template id="homeTpl">
     <section id="adminBanner" class="admin-banner hidden">🔓 Admin Mode Active</section>
+    <section id="statusBanner" class="status-banner"></section>
+
     <section id="offlineNotice" class="card offline hidden">
-      <h2>App temporarily offline</h2>
-      <p>This group is currently unavailable. Please check back later.</p>
+      <h2 id="offlineTitle">App temporarily offline</h2>
+      <p id="offlineText">This group is currently unavailable. Please check back later.</p>
     </section>
 
-    <section class="hero">
+    <section id="homeHero" class="hero">
       <h2>A digital buddy bench</h2>
       <p>Post a coffee, walk, gym session or food plan. Others can tap in. No private messages, no debate threads.</p>
       <button id="quickPostBtn" class="primary">➕ Post something</button>
@@ -64,6 +67,7 @@
 
   <template id="postTpl">
     <section id="adminBanner" class="admin-banner hidden">🔓 Admin Mode Active</section>
+    <section id="statusBanner" class="status-banner"></section>
     <section class="card">
       <h2>Post a meetup</h2>
       <p class="muted">Keep it short. The app controls replies.</p>
@@ -98,9 +102,11 @@
 
   <template id="joinTpl">
     <section id="adminBanner" class="admin-banner hidden">🔓 Admin Mode Active</section>
+    <section id="statusBanner" class="status-banner"></section>
+
     <section class="card">
       <h2>Add someone</h2>
-      <p class="muted">Simple pilot join. Add a person into pending approval, then approve them in Admin.</p>
+      <p class="muted">Add a person into pending approval, then approve them in Admin.</p>
 
       <label>First name</label>
       <input id="joinName" placeholder="Dave" />
@@ -109,7 +115,7 @@
       <input id="joinArea" placeholder="Skipton" />
 
       <label>Join code / poster code</label>
-      <input id="inviteCode" placeholder="SKIPTON-PILOT" value="SKIPTON-PILOT" />
+      <input id="inviteCode" placeholder="SKIPTON-PILOT" />
 
       <button id="joinRequest" class="primary">Add to pending</button>
       <div id="joinMsg" class="notice hidden"></div>
@@ -117,7 +123,7 @@
 
     <section class="card">
       <h2>Share join QR</h2>
-      <p class="muted">For the pilot, show this QR to someone in person. They still need approval.</p>
+      <p class="muted">Show this QR to someone in person. They still need approval.</p>
       <canvas id="qrCanvas" width="220" height="220"></canvas>
       <div class="qr-meta">
         <span id="liveCode"></span>
@@ -129,10 +135,17 @@
 
   <template id="manageTpl">
     <section id="adminBanner" class="admin-banner hidden">🔓 Admin Mode Active</section>
+    <section id="statusBanner" class="status-banner"></section>
 
     <section id="lockedPanel" class="card locked-note hidden">
       <h2>Admin locked</h2>
-      <p>Tap the Admin button at the top and enter the code to manage this group.</p>
+      <p>Tap the Admin button at the top and enter the master or group admin password.</p>
+    </section>
+
+    <section class="card admin-card master-only">
+      <h2>Master dashboard</h2>
+      <p class="muted">Create pilot groups, set access mode, and send setup links to facilitators.</p>
+      <div class="list" id="allGroupsList"></div>
     </section>
 
     <section class="card admin-card">
@@ -143,7 +156,85 @@
         <div><strong id="postCount">0</strong><span>Meetups</span></div>
       </div>
       <button id="toggleGroupLock" class="dangerBtn">Lock group</button>
-      <button id="resetDemo" class="secondary">Reset pilot demo</button>
+      <button id="resetDemo" class="secondary master-only">Reset pilot demo</button>
+    </section>
+
+    <section class="card admin-card">
+      <h3>Group access settings</h3>
+
+      <label>Current group</label>
+      <select id="groupSelect"></select>
+
+      <label>Access mode</label>
+      <select id="accessMode">
+        <option value="trial">Trial</option>
+        <option value="free">Free / good cause</option>
+        <option value="paid">Paid subscription</option>
+        <option value="locked">Locked</option>
+      </select>
+
+      <label>Trial days</label>
+      <input id="trialDays" type="number" min="1" max="365" />
+
+      <label>Max members</label>
+      <input id="maxMembers" type="number" min="1" max="10000" />
+
+      <label>Subscription active?</label>
+      <select id="subscriptionActive">
+        <option value="false">No</option>
+        <option value="true">Yes</option>
+      </select>
+
+      <label>Master override</label>
+      <select id="overrideAccess">
+        <option value="false">Off</option>
+        <option value="true">On - unlock anyway</option>
+      </select>
+
+      <label>Override reason</label>
+      <input id="overrideReason" placeholder="Good cause / community support" />
+
+      <label>Group admin password</label>
+      <input id="groupAdminPassword" placeholder="Password for this group admin" />
+
+      <label>Join code</label>
+      <input id="joinCode" placeholder="SKIPTON-PILOT" />
+
+      <button id="saveGroupSettings" class="primary">Save group settings</button>
+      <div id="settingsMsg" class="notice hidden"></div>
+    </section>
+
+    <section class="card admin-card master-only">
+      <h3>Create new pilot group</h3>
+      <label>Group name</label>
+      <input id="newGroupName" placeholder="Keighley Pilot" />
+
+      <label>Pilot length</label>
+      <select id="newTrialDays">
+        <option value="7">7 days</option>
+        <option value="14" selected>14 days</option>
+        <option value="30">30 days</option>
+      </select>
+
+      <label>Max members</label>
+      <input id="newMaxMembers" type="number" value="20" />
+
+      <label>Group admin password</label>
+      <input id="newGroupPassword" placeholder="Temporary setup password" />
+
+      <button id="createGroup" class="primary">Create pilot group</button>
+      <div id="groupMsg" class="notice hidden"></div>
+    </section>
+
+    <section class="card admin-card">
+      <h3>Invite pack</h3>
+      <p class="muted">Copy these and send them to facilitators or members.</p>
+      <label>Facilitator setup link</label>
+      <textarea id="setupLink" readonly></textarea>
+      <label>Member join link</label>
+      <textarea id="joinLink" readonly></textarea>
+      <button id="copyInvitePack" class="primary">Copy invite pack</button>
+      <div id="copyMsg" class="notice hidden"></div>
     </section>
 
     <section class="card admin-card">
@@ -155,20 +246,11 @@
       <h3>Members</h3>
       <div id="memberList" class="list"></div>
     </section>
-
-    <section class="card admin-card">
-      <h3>Groups</h3>
-      <label>Current group</label>
-      <select id="groupSelect"></select>
-      <label>New pilot group</label>
-      <input id="newGroupName" placeholder="Keighley Pilot" />
-      <button id="createGroup" class="primary">Create group</button>
-      <div id="groupMsg" class="notice hidden"></div>
-    </section>
   </template>
 
   <template id="helpTpl">
     <section id="adminBanner" class="admin-banner hidden">🔓 Admin Mode Active</section>
+    <section id="statusBanner" class="status-banner"></section>
     <section class="card">
       <h2>Rules</h2>
       <ul class="rules">

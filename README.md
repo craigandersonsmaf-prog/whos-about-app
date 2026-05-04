@@ -1,6 +1,6 @@
-# Who’s About - Simple Pilot Version
+# Who’s About - Full Admin V2
 
-Upload these files to the root of GitHub Pages:
+Upload these files to your GitHub repo root:
 index.html
 styles.css
 app.js
@@ -9,27 +9,31 @@ sw.js
 icon.svg
 README.md
 
-Demo admin code:
+Master admin password:
 28041972*
 
-What this version improves:
-- Simpler Home / Post / Add / Admin / Help tabs
-- Easy Add Someone screen
-- Pending approvals
-- Members list
-- Group lock
-- Create pilot groups
-- Clear Admin Mode banner
-- Buddy bench wording
-- Cleaner, less cluttered UI
+Default group admin password:
+pilot123
 
-Note:
-This is still a local prototype. Data is saved on the device/browser only.
-Real multi-user sync and push notifications need Firebase or another backend.
+Default join code:
+SKIPTON-PILOT
 
+New features:
+- Full group admin controls
+- Master admin vs group admin unlock
+- Trial / Free / Paid / Locked modes
+- Trial days and expiry logic
+- Auto offline when trial expires
+- Subscription active toggle
+- Master override toggle and reason
+- Group admin password per group
+- Join code per group
+- Facilitator setup link
+- Member join link
+- Invite pack copy button
+- Master dashboard listing all groups
+- Create new pilot group with trial days, max members, and admin password
 
-## No-cache rebuild
-Admin code: 28041972*
-This build disables/unregisters the old service worker and clears old browser caches.
-Upload all files at the GitHub repo root and hard refresh once.
-You should see: v1.1 no-cache near the group name.
+Important:
+This is still a front-end prototype using local browser storage.
+For real use with multiple phones, real users, secure passwords and push notifications, this must be moved to a backend such as Firebase.
