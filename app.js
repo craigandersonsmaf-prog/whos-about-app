@@ -1,62 +1,53 @@
-const state = {
-  role: localStorage.getItem("role") || "Member",
-  adminUnlocked: localStorage.getItem("adminUnlocked") === "true",
-  posts: JSON.parse(localStorage.getItem("posts") || "null") || [
-    {
-      id: crypto.randomUUID(),
-      category:"☕ Coffee",
-      text:"Coffee in Skipton town",
-      location:"Costa High Street",
-      time:"11:00",
-      when:"today",
-      going:3, maybe:1, onway:1, arrived:0,
-      asksTime:0, asksPlace:0,
-      host:"Craig",
-      closed:false
-    },
-    {
-      id: crypto.randomUUID(),
-      category:"🚶 Walk",
-      text:"Canal walk later",
-      location:"Morrisons bridge",
-      time:"18:00",
-      when:"today",
-      going:2, maybe:0, onway:0, arrived:0,
-      asksTime:0, asksPlace:0,
-      host:"Simon",
-      closed:false
-    }
+const ADMIN_CODE = "28041972*";
+const DEFAULT_JOIN_CODE = "SKIPTON-PILOT";
+
+const defaultState = {
+  adminUnlocked:false,
+  currentGroupId:"skipton-pilot",
+  groups:[{id:"skipton-pilot", name:"Skipton Pilot", locked:false, status:"Pilot"}],
+  members:[
+    {id:crypto.randomUUID(), groupId:"skipton-pilot", name:"Craig", area:"Skipton", role:"Admin", at:new Date().toLocaleDateString()}
   ],
-  pending: JSON.parse(localStorage.getItem("pending") || "[]"),
-  posters: JSON.parse(localStorage.getItem("posters") || "[]"),
-  tab: "home"
+  posts:[
+    {id:crypto.randomUUID(), groupId:"skipton-pilot", type:"☕ Coffee", text:"Coffee in Skipton town", location:"Costa High Street", time:"11:00", when:"today", going:3, maybe:1, onway:1, arrived:0, asksTime:0, asksPlace:0, closed:false},
+    {id:crypto.randomUUID(), groupId:"skipton-pilot", type:"🚶 Walk", text:"Canal walk later", location:"Morrisons bridge", time:"18:00", when:"today", going:2, maybe:0, onway:0, arrived:0, asksTime:0, asksPlace:0, closed:false}
+  ],
+  pending:[]
 };
 
-function save(){
-  localStorage.setItem("posts", JSON.stringify(state.posts));
-  localStorage.setItem("pending", JSON.stringify(state.pending));
-  localStorage.setItem("posters", JSON.stringify(state.posters));
-  localStorage.setItem("role", state.role);
-  localStorage.setItem("adminUnlocked", state.adminUnlocked ? "true" : "false");
-}
+const state = JSON.parse(localStorage.getItem("wa_simple_pilot_state") || "null") || defaultState;
+state.tab = "home";
 
 const screen = document.getElementById("screen");
-const tabs = document.querySelectorAll(".bottom-nav button");
 const adminLockBtn = document.getElementById("adminLockBtn");
-adminLockBtn.textContent = state.adminUnlocked ? "🔓 Admin" : "🔒 Admin";
+const groupLabel = document.getElementById("groupLabel");
 
-tabs.forEach(btn => btn.addEventListener("click", () => {
-  tabs.forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  state.tab = btn.dataset.tab;
-  render();
-}));
+function save(){
+  const copy = {...state};
+  delete copy.tab;
+  localStorage.setItem("wa_simple_pilot_state", JSON.stringify(copy));
+}
+
+function currentGroup(){
+  return state.groups.find(g => g.id === state.currentGroupId) || state.groups[0];
+}
+
+function setHeader(){
+  groupLabel.textContent = currentGroup().name;
+  adminLockBtn.textContent = state.adminUnlocked ? "🔓 Admin" : "🔒 Admin";
+}
+
+document.querySelectorAll(".bottom-nav button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    activateTab(btn.dataset.tab);
+    state.tab = btn.dataset.tab;
+    render();
+  });
+});
 
 adminLockBtn.addEventListener("click", () => {
   if(state.adminUnlocked){
     state.adminUnlocked = false;
-    state.role = "Member";
-    adminLockBtn.textContent = "🔒 Admin";
     save();
     render();
     return;
@@ -68,14 +59,13 @@ document.getElementById("closeAdminModal").addEventListener("click", () => {
   document.getElementById("adminModal").classList.add("hidden");
 });
 
-document.getElementById("unlockAdmin").addEventListener("click", async () => {
+document.getElementById("unlockAdmin").addEventListener("click", () => {
   const input = document.getElementById("adminCodeInput");
   const msg = document.getElementById("adminLockMsg");
-  const enteredHash = await sha256Hex(input.value.trim());
-  if(enteredHash === ADMIN_CODE_HASH){
+  if(input.value.trim() === ADMIN_CODE){
     state.adminUnlocked = true;
-    state.role = "Admin";
-    adminLockBtn.textContent = "🔓 Admin";
+    state.tab = "manage";
+    activateTab("manage");
     document.getElementById("adminModal").classList.add("hidden");
     input.value = "";
     msg.classList.add("hidden");
@@ -87,153 +77,266 @@ document.getElementById("unlockAdmin").addEventListener("click", async () => {
   }
 });
 
-
-async function sha256Hex(text){
-  const data = new TextEncoder().encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-// Demo admin code is checked by hash, not stored as plain text.
-// Production version should verify admin access on the backend.
-const ADMIN_CODE_HASH = "6aaa689ab4cc5b8f9890452ab921f0861c773508870cd3cca0fc68f4270ad5c3";
-
-// Demo print authorisation code is also checked by hash.
-const PRINT_CODE_HASH = "c476a774b20f3b937a9a59364a8558f76dd58c6bd4127368b99f21a23b613470";
-
-
 function render(){
+  setHeader();
   const tpl = document.getElementById(state.tab + "Tpl");
   screen.innerHTML = "";
   screen.appendChild(tpl.content.cloneNode(true));
+  const banner = document.getElementById("adminBanner");
+  if(banner && state.adminUnlocked) banner.classList.remove("hidden");
+
   if(state.tab === "home") initHome();
-  if(state.tab === "create") initCreate();
+  if(state.tab === "post") initPost();
   if(state.tab === "join") initJoin();
   if(state.tab === "manage") initManage();
 }
 
 function initHome(){
+  const group = currentGroup();
   const feed = document.getElementById("feed");
-  const filters = document.querySelectorAll(".filter");
-  let active = "all";
-  filters.forEach(f => f.addEventListener("click", () => {
-    filters.forEach(x => x.classList.remove("active"));
-    f.classList.add("active");
-    active = f.dataset.filter;
-    drawFeed();
-  }));
-  function drawFeed(){
-    const posts = state.posts.filter(p => !p.closed && (active==="all" || p.when===active));
-    feed.innerHTML = posts.length ? posts.map(postCard).join("") : `<div class="empty">Nothing happening yet. Create the first meetup.</div>`;
-    feed.querySelectorAll("[data-act]").forEach(btn => btn.addEventListener("click", handlePostAction));
+  const offline = document.getElementById("offlineNotice");
+  document.getElementById("quickPostBtn").addEventListener("click", () => {
+    state.tab = "post"; activateTab("post"); render();
+  });
+
+  if(group.locked && !state.adminUnlocked){
+    offline.classList.remove("hidden");
+    document.querySelector(".hero").classList.add("hidden");
+    document.querySelector(".filters").classList.add("hidden");
+    feed.innerHTML = "";
+    return;
   }
-  drawFeed();
+
+  let active = "all";
+  document.querySelectorAll(".filter").forEach(f => {
+    f.addEventListener("click", () => {
+      document.querySelectorAll(".filter").forEach(x => x.classList.remove("active"));
+      f.classList.add("active");
+      active = f.dataset.filter;
+      draw();
+    });
+  });
+
+  function draw(){
+    const posts = state.posts.filter(p => p.groupId === group.id && !p.closed && (active === "all" || p.when === active));
+    feed.innerHTML = posts.length ? posts.map(postCard).join("") : `<div class="empty">Nothing posted yet. Be the first to put the bench out.</div>`;
+    feed.querySelectorAll("[data-act]").forEach(btn => btn.addEventListener("click", postAction));
+  }
+  draw();
 }
 
 function postCard(p){
   return `<article class="meetup">
     <div class="title">
-      <div>
-        <h2>${escapeHtml(p.category)}</h2>
-        <div>${escapeHtml(p.text)}</div>
-      </div>
+      <div><h2>${escapeHtml(p.type)}</h2><div>${escapeHtml(p.text)}</div></div>
       <span class="badge">${p.when === "now" ? "Now" : p.when === "today" ? "Today" : "This week"}</span>
     </div>
-    <div class="meta">
-      <div>📍 ${escapeHtml(p.location || "Location needed")}</div>
-      <div>⏰ ${escapeHtml(p.time || "Time needed")}</div>
-    </div>
+    <div class="meta"><div>📍 ${escapeHtml(p.location)}</div><div>⏰ ${escapeHtml(p.time)}</div></div>
     <div class="counts">
-      <span>👍 ${p.going} going</span>
-      <span>👀 ${p.maybe} maybe</span>
-      <span>🟢 ${p.onway} on way</span>
-      <span>📍 ${p.arrived} arrived</span>
+      <span>👍 ${p.going} going</span><span>👀 ${p.maybe} maybe</span><span>🟢 ${p.onway} on way</span><span>📍 ${p.arrived} arrived</span>
       ${p.asksTime ? `<span>⏰ ${p.asksTime} asked time</span>` : ""}
       ${p.asksPlace ? `<span>📍 ${p.asksPlace} asked place</span>` : ""}
     </div>
     <div class="actions">
       <button class="action join" data-act="going" data-id="${p.id}">👍 I’m in</button>
       <button class="action" data-act="maybe" data-id="${p.id}">👀 Maybe</button>
-      <button class="action" data-act="onway" data-id="${p.id}">🟢 On my way</button>
+      <button class="action" data-act="onway" data-id="${p.id}">🟢 On way</button>
       <button class="action" data-act="arrived" data-id="${p.id}">📍 Arrived</button>
-      <button class="action ask" data-act="asksTime" data-id="${p.id}">⏰ What time?</button>
+      <button class="action ask" data-act="asksTime" data-id="${p.id}">⏰ Time?</button>
       <button class="action ask" data-act="asksPlace" data-id="${p.id}">📍 Where?</button>
       ${state.adminUnlocked ? `<button class="action danger" data-act="close" data-id="${p.id}">🔒 Close</button>` : ""}
     </div>
   </article>`;
 }
 
-function handlePostAction(e){
-  const id = e.currentTarget.dataset.id;
+function postAction(e){
+  const p = state.posts.find(x => x.id === e.currentTarget.dataset.id);
   const act = e.currentTarget.dataset.act;
-  const p = state.posts.find(x => x.id === id);
   if(!p) return;
   if(act === "close") p.closed = true;
   else p[act] = (p[act] || 0) + 1;
-  save();
-  render();
+  save(); render();
 }
 
-function initCreate(){
+function initPost(){
+  const group = currentGroup();
+  if(group.locked && !state.adminUnlocked){
+    document.querySelector(".card").innerHTML = `<h2>App temporarily offline</h2><p class="muted">This group is currently unavailable.</p>`;
+    return;
+  }
+
+  let selectedType = "☕ Coffee";
   let when = "now";
-  document.querySelectorAll("#whenChoice button").forEach(btn => btn.addEventListener("click", () => {
-    document.querySelectorAll("#whenChoice button").forEach(b => b.classList.remove("selected"));
-    btn.classList.add("selected");
-    when = btn.dataset.when;
-  }));
+
+  document.querySelectorAll(".quick-types button").forEach((btn, i) => {
+    if(i === 0) btn.classList.add("selected");
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".quick-types button").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedType = btn.dataset.type;
+      const input = document.getElementById("postText");
+      if(!input.value.trim()){
+        input.value = selectedType.replace(/[^\u{1F300}-\u{1FAFF}]/gu,"").trim() ? selectedType.replace(/^.. /,"") + " in town" : "Meetup";
+      }
+    });
+  });
+
+  document.querySelectorAll("#whenChoice button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#whenChoice button").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      when = btn.dataset.when;
+    });
+  });
+
   document.getElementById("createPost").addEventListener("click", () => {
     const text = document.getElementById("postText").value.trim();
-    const category = document.getElementById("category").value;
     const location = document.getElementById("location").value.trim();
     const time = document.getElementById("time").value;
     const msg = document.getElementById("createMsg");
     if(!text || !location || !time){
-      msg.textContent = "Add a short post, location and time first.";
+      msg.textContent = "Add what, where and time.";
       msg.classList.remove("hidden");
       return;
     }
-    state.posts.unshift({
-      id: crypto.randomUUID(), category, text, location, time, when,
-      going:1, maybe:0, onway:0, arrived:0, asksTime:0, asksPlace:0,
-      host:"You", closed:false
-    });
+    state.posts.unshift({id:crypto.randomUUID(), groupId:group.id, type:selectedType, text, location, time, when, going:1, maybe:0, onway:0, arrived:0, asksTime:0, asksPlace:0, closed:false});
     save();
-    state.tab = "home";
-    document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.toggle("active", b.dataset.tab==="home"));
-    render();
+    state.tab = "home"; activateTab("home"); render();
   });
 }
 
 function initJoin(){
   const codeInput = document.getElementById("inviteCode");
   const params = new URLSearchParams(location.search);
-  if(params.get("p")) codeInput.value = params.get("p");
   if(params.get("code")) codeInput.value = params.get("code");
+  if(params.get("group")){
+    const g = state.groups.find(x => x.id === params.get("group"));
+    if(g) state.currentGroupId = g.id;
+  }
+
   document.getElementById("joinRequest").addEventListener("click", () => {
-    const code = codeInput.value.trim();
     const name = document.getElementById("joinName").value.trim();
     const area = document.getElementById("joinArea").value.trim();
+    const code = codeInput.value.trim();
     const msg = document.getElementById("joinMsg");
-    if(!code || !name || !area){
-      msg.textContent = "Add code, first name and area.";
+    if(!name || !area || !code){
+      msg.textContent = "Add first name, area and code.";
       msg.classList.remove("hidden");
       return;
     }
-    state.pending.push({id: crypto.randomUUID(), code, name, area, at: new Date().toLocaleString()});
+    state.pending.push({id:crypto.randomUUID(), groupId:currentGroup().id, name, area, code, at:new Date().toLocaleString()});
     save();
-    msg.textContent = "Request sent. A moderator/admin would approve this in the real app.";
+    msg.textContent = `${name} added to pending approval.`;
     msg.classList.remove("hidden");
+    document.getElementById("joinName").value = "";
+    document.getElementById("joinArea").value = "";
   });
-  document.getElementById("refreshQR").addEventListener("click", makeLiveQR);
-  makeLiveQR();
+
+  document.getElementById("refreshQR").addEventListener("click", makeQR);
+  makeQR();
 }
 
-function makeLiveQR(){
-  const code = "LIVE-" + Math.random().toString(36).slice(2,6).toUpperCase() + "-" + Math.random().toString(36).slice(2,6).toUpperCase();
-  const until = new Date(Date.now() + 2*60*60*1000);
+function makeQR(){
+  const code = DEFAULT_JOIN_CODE;
   document.getElementById("liveCode").textContent = code;
-  document.getElementById("validUntil").textContent = "Valid until " + until.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-  drawFakeQR(document.getElementById("qrCanvas"), "join?code=" + code);
+  document.getElementById("validUntil").textContent = currentGroup().name;
+  drawFakeQR(document.getElementById("qrCanvas"), `join?group=${currentGroup().id}&code=${code}`);
+}
+
+function initManage(){
+  const group = currentGroup();
+  const adminCards = document.querySelectorAll(".admin-card");
+  if(!state.adminUnlocked){
+    document.getElementById("lockedPanel").classList.remove("hidden");
+    adminCards.forEach(card => card.classList.add("locked"));
+  }
+
+  document.getElementById("pendingCount").textContent = state.pending.filter(p => p.groupId === group.id).length;
+  document.getElementById("memberCount").textContent = state.members.filter(m => m.groupId === group.id).length;
+  document.getElementById("postCount").textContent = state.posts.filter(p => p.groupId === group.id && !p.closed).length;
+
+  const lockBtn = document.getElementById("toggleGroupLock");
+  lockBtn.textContent = group.locked ? "Unlock group" : "Lock group";
+  lockBtn.addEventListener("click", () => {
+    if(!state.adminUnlocked) return;
+    group.locked = !group.locked;
+    save(); render();
+  });
+
+  document.getElementById("resetDemo").addEventListener("click", () => {
+    if(!state.adminUnlocked) return;
+    if(confirm("Reset this pilot demo on this device?")){
+      localStorage.removeItem("wa_simple_pilot_state");
+      location.reload();
+    }
+  });
+
+  const select = document.getElementById("groupSelect");
+  select.innerHTML = state.groups.map(g => `<option value="${g.id}" ${g.id === group.id ? "selected" : ""}>${escapeHtml(g.name)} ${g.locked ? "(locked)" : ""}</option>`).join("");
+  select.addEventListener("change", () => {
+    if(!state.adminUnlocked) return;
+    state.currentGroupId = select.value;
+    save(); render();
+  });
+
+  document.getElementById("createGroup").addEventListener("click", () => {
+    if(!state.adminUnlocked) return;
+    const name = document.getElementById("newGroupName").value.trim();
+    const msg = document.getElementById("groupMsg");
+    if(!name){ msg.textContent = "Add a group name."; msg.classList.remove("hidden"); return; }
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || crypto.randomUUID();
+    if(state.groups.some(g => g.id === id)){ msg.textContent = "That group already exists."; msg.classList.remove("hidden"); return; }
+    state.groups.push({id, name, locked:false, status:"Pilot"});
+    state.currentGroupId = id;
+    state.members.push({id:crypto.randomUUID(), groupId:id, name:"Group Admin", area:"", role:"Admin", at:new Date().toLocaleDateString()});
+    save(); render();
+  });
+
+  drawPending(group.id);
+  drawMembers(group.id);
+}
+
+function drawPending(groupId){
+  const list = document.getElementById("pendingList");
+  const pending = state.pending.filter(p => p.groupId === groupId);
+  list.innerHTML = pending.length ? pending.map(p => `<div class="row">
+    <strong>${escapeHtml(p.name)}</strong> <small>${escapeHtml(p.area)}</small><br>
+    <small>${escapeHtml(p.code)} · ${escapeHtml(p.at)}</small>
+    <div class="row-actions">
+      <button class="approve" data-approve="${p.id}">Approve</button>
+      <button class="reject" data-reject="${p.id}">Reject</button>
+    </div>
+  </div>`).join("") : `<div class="empty">No pending people.</div>`;
+
+  list.querySelectorAll("[data-approve]").forEach(btn => btn.addEventListener("click", () => {
+    if(!state.adminUnlocked) return;
+    const p = state.pending.find(x => x.id === btn.dataset.approve);
+    if(!p) return;
+    state.members.push({id:crypto.randomUUID(), groupId:p.groupId, name:p.name, area:p.area, role:"Member", at:new Date().toLocaleDateString()});
+    state.pending = state.pending.filter(x => x.id !== p.id);
+    save(); render();
+  }));
+  list.querySelectorAll("[data-reject]").forEach(btn => btn.addEventListener("click", () => {
+    if(!state.adminUnlocked) return;
+    state.pending = state.pending.filter(x => x.id !== btn.dataset.reject);
+    save(); render();
+  }));
+}
+
+function drawMembers(groupId){
+  const list = document.getElementById("memberList");
+  const members = state.members.filter(m => m.groupId === groupId);
+  list.innerHTML = members.length ? members.map(m => `<div class="row">
+    <strong>${escapeHtml(m.name)}</strong> <small>${escapeHtml(m.role)}</small><br>
+    <small>${escapeHtml(m.area || "No area")} · joined ${escapeHtml(m.at)}</small>
+    ${m.role !== "Admin" ? `<div class="row-actions"><button class="remove" data-remove="${m.id}">Remove</button></div>` : ""}
+  </div>`).join("") : `<div class="empty">No members yet.</div>`;
+
+  list.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
+    if(!state.adminUnlocked) return;
+    state.members = state.members.filter(x => x.id !== btn.dataset.remove);
+    save(); render();
+  }));
 }
 
 function drawFakeQR(canvas, seed){
@@ -241,84 +344,25 @@ function drawFakeQR(canvas, seed){
   const size = canvas.width;
   ctx.fillStyle = "white"; ctx.fillRect(0,0,size,size);
   ctx.fillStyle = "black";
-  const cell = 10, margin = 20;
-  function finder(x,y){
-    ctx.fillRect(x,y,50,50); ctx.fillStyle="white"; ctx.fillRect(x+10,y+10,30,30); ctx.fillStyle="black"; ctx.fillRect(x+20,y+20,10,10);
-  }
+  function finder(x,y){ctx.fillRect(x,y,50,50);ctx.fillStyle="white";ctx.fillRect(x+10,y+10,30,30);ctx.fillStyle="black";ctx.fillRect(x+20,y+20,10,10)}
   finder(15,15); finder(size-65,15); finder(15,size-65);
-  let hash = 0;
-  for(let i=0;i<seed.length;i++) hash = ((hash<<5)-hash)+seed.charCodeAt(i);
-  for(let y=margin;y<size-margin;y+=cell){
-    for(let x=margin;x<size-margin;x+=cell){
-      const inFinder = (x<75&&y<75)||(x>size-85&&y<75)||(x<75&&y>size-85);
+  let hash = 0; for(let i=0;i<seed.length;i++) hash = ((hash<<5)-hash)+seed.charCodeAt(i);
+  for(let y=20;y<size-20;y+=10){
+    for(let x=20;x<size-20;x+=10){
+      const inFinder=(x<75&&y<75)||(x>size-85&&y<75)||(x<75&&y>size-85);
       if(inFinder) continue;
-      const val = Math.abs(Math.sin((x*13+y*7+hash)*.017));
-      if(val>.56) ctx.fillRect(x,y,cell-2,cell-2);
+      if(Math.abs(Math.sin((x*13+y*7+hash)*.017))>.56) ctx.fillRect(x,y,8,8);
     }
   }
 }
 
-function initManage(){
-  if(!state.adminUnlocked){
-    document.getElementById("lockedPanel").classList.remove("hidden");
-    document.querySelectorAll("#manageTpl, .card").forEach(()=>{});
-    screen.querySelectorAll(".card").forEach((card, i) => { if(i > 0) card.classList.add("locked-blur"); });
-  }
-  document.getElementById("pendingCount").textContent = state.pending.length;
-  document.getElementById("postCount").textContent = state.posts.filter(p => !p.closed).length;
-  document.getElementById("posterCount").textContent = state.posters.length;
-  const pendingList = document.getElementById("pendingList");
-  pendingList.innerHTML = state.pending.length ? state.pending.map(p => `<div class="row">
-    <strong>${escapeHtml(p.name)}</strong> <small>${escapeHtml(p.area)}</small><br>
-    <small>Code: ${escapeHtml(p.code)} · ${escapeHtml(p.at)}</small>
-    <div class="row-actions">
-      <button class="approve" data-pending="approve" data-id="${p.id}">Approve</button>
-      <button class="reject" data-pending="reject" data-id="${p.id}">Reject</button>
-    </div>
-  </div>`).join("") : `<div class="empty">No pending requests.</div>`;
-  pendingList.querySelectorAll("[data-pending]").forEach(btn => btn.addEventListener("click", () => {
-    if(!state.adminUnlocked) return;
-    state.pending = state.pending.filter(p => p.id !== btn.dataset.id);
-    save(); render();
-  }));
-
-  const posterList = document.getElementById("posterList");
-  drawPosterList();
-  document.getElementById("createPoster").addEventListener("click", async () => {
-    if(!state.adminUnlocked) return;
-    const code = document.getElementById("printCode").value.trim();
-    const note = document.getElementById("posterNote").value.trim();
-    const msg = document.getElementById("posterMsg");
-    const printHash = await sha256Hex(code);
-    if(printHash !== PRINT_CODE_HASH){
-      msg.textContent = "Wrong print code.";
-      msg.classList.remove("hidden");
-      return;
-    }
-    const n = state.posters.length + 1;
-    const id = "SK-AMC-" + String(n).padStart(3,"0");
-    state.posters.unshift({id, note: note || "Skipton AMC", created:new Date().toLocaleString(), active:true, scans:0, joins:0});
-    save();
-    msg.textContent = `Poster created: ${id}`;
-    msg.classList.remove("hidden");
-    drawPosterList();
-    document.getElementById("posterCount").textContent = state.posters.length;
-  });
-
-  function drawPosterList(){
-    posterList.innerHTML = state.posters.length ? state.posters.map(p => `<div class="row">
-      <strong>${p.id}</strong> ${p.active ? "🟢" : "🔴"}<br>
-      <small>${escapeHtml(p.note)} · ${escapeHtml(p.created)}</small><br>
-      <small>Scans: ${p.scans} · Join requests: ${p.joins}</small>
-    </div>`).join("") : `<div class="empty">No poster fingerprints yet.</div>`;
-  }
+function activateTab(tab){
+  document.querySelectorAll(".bottom-nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
 }
 
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
 
-if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("./sw.js").catch(()=>{});
-}
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
 render();

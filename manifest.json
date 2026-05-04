@@ -1,10 +1,10 @@
 {
-  "name": "Who's About?",
+  "name": "Who\u2019s About?",
   "short_name": "Who\u2019s About",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b1220",
-  "theme_color": "#111827",
+  "theme_color": "#0b1220",
   "icons": [
     {
       "src": "icon.svg",
